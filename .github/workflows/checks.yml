@@ -1,0 +1,67 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    name: Lean regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      LEAN_NUM_THREADS: "2"
+      MATHLIB_NO_CACHE_ON_UPDATE: "1"
+    steps:
+      - name: Check out hand hash
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: mahjong-hand-hash
+      - name: Require regression tests
+        working-directory: mahjong-hand-hash
+        run: |
+          if [ ! -d MahjongHandHashTests ] ||
+             [ -z "$(find MahjongHandHashTests -type f -name '*.lean' -print -quit)" ]; then
+            echo "::error::No Lean regression test modules found in MahjongHandHashTests"
+            exit 1
+          fi
+      - name: Check out Core
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: bgnori/mahjong-domain-core
+          ref: main
+          path: mahjong-domain-core
+      - name: Record tested revisions
+        run: |
+          for repository in mahjong-domain-core mahjong-hand-hash; do
+            printf '%s: %s\n' "$repository" "$(git -C "$repository" rev-parse HEAD)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Install elan
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf \
+            https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Install pinned Lean toolchain
+        working-directory: mahjong-hand-hash
+        run: elan toolchain install "$(cat lean-toolchain)"
+      - name: Fetch dependencies and Mathlib cache
+        working-directory: mahjong-hand-hash
+        run: |
+          set -o pipefail
+          lake update
+          lake exe cache get $(find MahjongHandHash MahjongHandHashTests ../mahjong-domain-core/MahjongDomain \
+            -name '*.lean' -exec sed -n 's/^\(public \)\?import \(Mathlib\..*\)$/\2/p' {} + | sort -u)
+      - name: Build library and regression tests
+        working-directory: mahjong-hand-hash
+        run: lake build MahjongHandHash MahjongHandHashTests
