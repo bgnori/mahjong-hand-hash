@@ -16,6 +16,44 @@ assert_no_sorry TileCollection.decode
 example : TileCollection.decode (-1) = .error (.keyOutOfRange (-1)) := by
   rfl
 
+def collisionRegressionHand : TileCounts :=
+  TileCounts.ofList
+    [ Tile.suited .man ⟨3, by decide⟩
+    , Tile.suited .man ⟨4, by decide⟩
+    , Tile.suited .man ⟨5, by decide⟩
+    , Tile.suited .man ⟨6, by decide⟩
+    , Tile.suited .man ⟨7, by decide⟩
+    , Tile.suited .man ⟨8, by decide⟩
+    , Tile.suited .pin ⟨0, by decide⟩
+    ]
+
+def chi123 (calledOffset : Fin 3) : FixedMeld :=
+  .chi .man ⟨0, by decide⟩ calledOffset
+
+def repeatedChiInput : MeldedHand :=
+  { hand := collisionRegressionHand
+    fixedMelds := [chi123 ⟨1, by decide⟩, chi123 ⟨1, by decide⟩] }
+
+def chiAndAnkanInput : MeldedHand :=
+  { hand := collisionRegressionHand
+    fixedMelds :=
+      [ chi123 ⟨0, by decide⟩
+      , .ankan (.honor Honor.red) ] }
+
+example :
+    (match MeldedHand.encode repeatedChiInput, MeldedHand.encode chiAndAnkanInput with
+    | .ok repeatedChiKey, .ok chiAndAnkanKey => repeatedChiKey != chiAndAnkanKey
+    | _, _ => false) = true := by
+  native_decide
+
+example :
+    ((MeldedHand.encode repeatedChiInput).bind MeldedHand.decode).map
+      (fun decoded =>
+        Tile.all.all (fun tile => decoded.hand tile == repeatedChiInput.hand tile) &&
+          decoded.fixedMelds == sortFixedMelds repeatedChiInput.fixedMelds) =
+      .ok true := by
+  native_decide
+
 /-- info: Except.ok 89285314363 -/
 #guard_msgs in
 #eval TileCollection.encode (TileCounts.ofList (Tile.all.take 13))

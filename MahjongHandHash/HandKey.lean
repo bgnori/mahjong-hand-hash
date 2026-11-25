@@ -296,7 +296,7 @@ def fixedComboRankFrom (minimum remaining : Nat) :
        else
         (List.range (head - minimum)).foldl
           (fun total offset =>
-            total + fixedWays (minimum + offset + 1) (remaining - 1))
+            total + fixedWays (minimum + offset) (remaining - 1))
           0)
       + fixedComboRankFrom head (remaining - 1) rest
 
@@ -311,7 +311,7 @@ def fixedComboUnrank (meldCount rank : Nat) : Option (List Nat) :=
       let rec choose (head rank : Nat) : Option (Nat × Nat) :=
         if head ≥ 403 then none
         else
-          let block := fixedWays (head + 1) (remaining - 1)
+          let block := fixedWays head (remaining - 1)
           if rank < block then some (head, rank)
           else choose (head + 1) (rank - block)
       match choose minimum rank with
