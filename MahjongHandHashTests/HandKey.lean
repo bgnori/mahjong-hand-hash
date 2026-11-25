@@ -16,6 +16,21 @@ assert_no_sorry TileCollection.decode
 example : TileCollection.decode (-1) = .error (.keyOutOfRange (-1)) := by
   rfl
 
+example :
+    TileCollection.keyMax ≤ fixedKeyLimit.toNat ∧
+      MeldedHand.keyMax ≤ fixedKeyLimit.toNat := by
+  native_decide
+
+example :
+    TileCollection.decode (fixedKeyLimit + 1) =
+      .error (.keyOutOfRange (fixedKeyLimit + 1)) := by
+  rfl
+
+example :
+    MeldedHand.decode (fixedKeyLimit + 1) =
+      .error (.keyOutOfRange (fixedKeyLimit + 1)) := by
+  rfl
+
 def collisionRegressionHand : TileCounts :=
   TileCounts.ofList
     [ Tile.suited .man ⟨3, by decide⟩

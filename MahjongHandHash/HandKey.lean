@@ -18,6 +18,7 @@ inductive TileCollectionKeyError
   | invalidTotal (total : Nat)
   | invalidCount (tile : Tile) (count : Nat)
   | keyOutOfRange (key : Int)
+  | roundTripFailure (key : Int)
   deriving DecidableEq, Repr
 
 inductive MeldedHandKeyError
@@ -26,6 +27,7 @@ inductive MeldedHandKeyError
   | invalidHandCount (tile : Tile) (count : Nat)
   | invalidPhysicalCapacity (tile : Tile) (count : Nat)
   | keyOutOfRange (key : Int)
+  | roundTripFailure (key : Int)
   deriving DecidableEq, Repr
 
 inductive RelativeCaller
@@ -178,10 +180,6 @@ def collectionEncodeNat (counts : TileCounts) : Except TileCollectionKeyError Na
   else
     pure (collectionOffset total + vectorRank counts total)
 
-def TileCollection.encode (counts : TileCounts) :
-    Except TileCollectionKeyError TileCollectionKey :=
-  (collectionEncodeNat counts).map fun key => Int.ofNat key
-
 def collectionDecodeNat (key : Nat) :
     Except TileCollectionKeyError (TileCounts × Nat) := do
   if key ≥ collectionKeyMax then
@@ -199,13 +197,42 @@ def collectionDecodeNat (key : Nat) :
             find rest (offset + count)
     find [13, 14, 15, 16, 17, 18] 0
 
-def TileCollection.decode (key : TileCollectionKey) :
+def collectionDecodeUnchecked (key : TileCollectionKey) :
     Except TileCollectionKeyError TileCounts := do
   if key < 0 then
     .error (.keyOutOfRange key)
   else
     let (counts, _) ← collectionDecodeNat key.toNat
     pure counts
+
+def TileCounts.same (left right : TileCounts) : Bool :=
+  Tile.all.all fun tile => left tile == right tile
+
+def TileCollection.encode (counts : TileCounts) :
+    Except TileCollectionKeyError TileCollectionKey := do
+  let key ← collectionEncodeNat counts
+  if key > fixedKeyLimit.toNat then
+    .error (.keyOutOfRange (Int.ofNat key))
+  else
+    match collectionDecodeUnchecked (Int.ofNat key) with
+    | .error _ => .error (.roundTripFailure (Int.ofNat key))
+    | .ok decoded =>
+        if TileCounts.same decoded counts then
+          pure (Int.ofNat key)
+        else
+          .error (.roundTripFailure (Int.ofNat key))
+
+def TileCollection.decode (key : TileCollectionKey) :
+    Except TileCollectionKeyError TileCounts := do
+  if key < 0 ∨ key > fixedKeyLimit then
+    .error (.keyOutOfRange key)
+  else
+    let decoded ← collectionDecodeUnchecked key
+    match collectionEncodeNat decoded with
+    | .error _ => .error (.roundTripFailure key)
+    | .ok encoded =>
+        if encoded = key.toNat then pure decoded
+        else .error (.roundTripFailure key)
 
 def binom (n k : Nat) : Nat :=
   Nat.choose n k
@@ -380,8 +407,8 @@ def meldKeyMax : Nat :=
         countDigitsExactly Tile.all (14 - 3 * m) * f)
     0
 
-def MeldedHand.encode (input : MeldedHand) :
-    Except MeldedHandKeyError MeldedHandKey := do
+def meldedHandEncodeNat (input : MeldedHand) :
+    Except MeldedHandKeyError Nat := do
   _ ← input.valid
   let meldCount := input.fixedMeldCount
   let handTotal := input.hand.total
@@ -393,9 +420,9 @@ def MeldedHand.encode (input : MeldedHand) :
   let keyNat :=
     meldKeyOffset meldCount base14 +
       fixedRank * handCount + handRank
-  pure (Int.ofNat keyNat)
+  pure keyNat
 
-def MeldedHand.decode (key : MeldedHandKey) :
+def meldedHandDecodeUnchecked (key : MeldedHandKey) :
     Except MeldedHandKeyError MeldedHand :=
   if key < 0 then
     .error (.keyOutOfRange key)
@@ -445,6 +472,36 @@ where
             let input : MeldedHand := { hand := hand, fixedMelds := melds }
             _ ← input.valid
             pure input
+
+def MeldedHand.same (left right : MeldedHand) : Bool :=
+  TileCounts.same left.hand right.hand &&
+    sortFixedMelds left.fixedMelds == sortFixedMelds right.fixedMelds
+
+def MeldedHand.encode (input : MeldedHand) :
+    Except MeldedHandKeyError MeldedHandKey := do
+  let key ← meldedHandEncodeNat input
+  if key > fixedKeyLimit.toNat then
+    .error (.keyOutOfRange (Int.ofNat key))
+  else
+    match meldedHandDecodeUnchecked (Int.ofNat key) with
+    | .error _ => .error (.roundTripFailure (Int.ofNat key))
+    | .ok decoded =>
+        if MeldedHand.same decoded input then
+          pure (Int.ofNat key)
+        else
+          .error (.roundTripFailure (Int.ofNat key))
+
+def MeldedHand.decode (key : MeldedHandKey) :
+    Except MeldedHandKeyError MeldedHand := do
+  if key < 0 ∨ key > fixedKeyLimit then
+    .error (.keyOutOfRange key)
+  else
+    let decoded ← meldedHandDecodeUnchecked key
+    match meldedHandEncodeNat decoded with
+    | .error _ => .error (.roundTripFailure key)
+    | .ok encoded =>
+        if encoded = key.toNat then pure decoded
+        else .error (.roundTripFailure key)
 
 namespace TileCollection
 

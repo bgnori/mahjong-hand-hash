@@ -5,12 +5,13 @@ Experimental keys for Mahjong hands, using normalized tile types from
 `MahjongHandHash.HandKey`; the existing declarations remain in the
 `MahjongDomain` namespace.
 
-The implementation is a draft: round-trip and injectivity proofs, full bounds
-proofs, and comprehensive regression tests are not yet present. A previously
-reported collision in meld-combination ranking has been corrected and covered
-by a regression test, but the encoding is not fully proven or versioned. Do
-not use its keys as persistent identifiers until the encoding has been
-verified and versioned.
+The implementation is a draft. Encode/decode calls check the non-negative
+signed INT64 range and verify their inverse operation at runtime; the
+key-space bounds are also tested. Full formal proofs and comprehensive
+regression tests are not yet present, and the encoding is not versioned. A
+previously reported collision in meld-combination ranking has been corrected
+and covered by a regression test. Do not use its keys as persistent
+identifiers until the encoding has been fully verified and versioned.
 
 The Lean regression job requires at least one `.lean` file under
 `MahjongHandHashTests/` and builds the `MahjongHandHash` and
