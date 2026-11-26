@@ -3,13 +3,11 @@
 This glossary describes hand-hash-specific concepts. Shared tile and hand
 terminology is defined by the
 [Mahjong Domain Core glossary](https://github.com/bgnori/mahjong-domain-core/blob/main/docs/GLOSSARY.md).
-`TileCountsKey` is implemented as a distinct key type. The planned
-`MeldAwareHandKey` is still named `MeldedHandKey` in the draft implementation.
+`TileCountsKey` and `MeldAwareHandKey` are distinct key types.
 
 この用語集はhand hash固有の概念を記述します。牌や手牌の共通用語は
 [Mahjong Domain Coreの用語集](https://github.com/bgnori/mahjong-domain-core/blob/main/docs/GLOSSARY.md)
-を参照してください。`TileCountsKey`は別のキー型として実装済みです。
-予定名`MeldAwareHandKey`は試案の実装ではまだ`MeldedHandKey`を使用しています。
+を参照してください。`TileCountsKey`と`MeldAwareHandKey`は別のキー型です。
 
 | Name / 名称 | 日本語 | Definition and scope / 定義・対象範囲 |
 |---|---|---|

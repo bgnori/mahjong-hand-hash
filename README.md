@@ -16,6 +16,13 @@ previously reported collision in meld-combination ranking has been corrected
 and covered by a regression test. Do not use its keys as persistent
 identifiers until the encoding has been fully verified and versioned.
 
+`MeldAwareHandKey.encode` accepts the shared `MahjongDomain.HandSnapshot`;
+`decode` returns the same shared representation, with melds in canonical key
+order. Hand identity ignores meld order but retains duplicates and call details.
+Inputs are checked for fixed-meld count, standing size and combined four-copy
+capacity. The current ranking remains experimental and its full correctness
+has not been proved.
+
 For tile-count keys, Lean proves the candidate count for up to 34 tile kinds
 and 18 tiles, successful encoding, round-trip recovery, injectivity, and the
 INT64 range for every valid input. Decode succeeds exactly for non-negative

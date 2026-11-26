@@ -7,9 +7,9 @@ import Mathlib.Util.AssertNoSorry
 
 open MahjongDomain
 
-assert_no_sorry MeldedHand.valid
-assert_no_sorry MeldedHand.encode
-assert_no_sorry MeldedHand.decode
+assert_no_sorry HandSnapshot.valid
+assert_no_sorry MeldAwareHandKey.encode
+assert_no_sorry MeldAwareHandKey.decode
 assert_no_sorry TileCountsKey.encode
 assert_no_sorry TileCountsKey.decode
 assert_no_sorry countDigitsExactly_cons
@@ -43,7 +43,7 @@ example : TileCountsKey.decode ⟨-1⟩ = .error (.keyOutOfRange (-1)) := by
 
 example :
     TileCountsKey.keyMax ≤ fixedKeyLimit.toNat ∧
-      MeldedHand.keyMax ≤ fixedKeyLimit.toNat := by
+      MeldAwareHandKey.keyMax ≤ fixedKeyLimit.toNat := by
   native_decide
 
 example :
@@ -52,7 +52,7 @@ example :
   rfl
 
 example :
-    MeldedHand.decode (fixedKeyLimit + 1) =
+    MeldAwareHandKey.decode ⟨fixedKeyLimit + 1⟩ =
       .error (.keyOutOfRange (fixedKeyLimit + 1)) := by
   rfl
 
@@ -115,30 +115,148 @@ def collisionRegressionHand : TileCounts :=
     ]
 
 def chi123 (calledOffset : Fin 3) : FixedMeld :=
-  .chi .man ⟨0, by decide⟩ calledOffset
+  .chi ⟨.man, ⟨0, by decide⟩⟩ calledOffset
 
-def repeatedChiInput : MeldedHand :=
-  { hand := collisionRegressionHand
+def repeatedChiInput : HandSnapshot :=
+  { standing := collisionRegressionHand
     fixedMelds := [chi123 ⟨1, by decide⟩, chi123 ⟨1, by decide⟩] }
 
-def chiAndAnkanInput : MeldedHand :=
-  { hand := collisionRegressionHand
+def chiAndAnkanInput : HandSnapshot :=
+  { standing := collisionRegressionHand
     fixedMelds :=
       [ chi123 ⟨0, by decide⟩
       , .ankan (.honor Honor.red) ] }
 
 example :
-    (match MeldedHand.encode repeatedChiInput, MeldedHand.encode chiAndAnkanInput with
+    (match MeldAwareHandKey.encode repeatedChiInput, MeldAwareHandKey.encode chiAndAnkanInput with
     | .ok repeatedChiKey, .ok chiAndAnkanKey => repeatedChiKey != chiAndAnkanKey
     | _, _ => false) = true := by
   native_decide
 
 example :
-    ((MeldedHand.encode repeatedChiInput).bind MeldedHand.decode).map
+    ((MeldAwareHandKey.encode repeatedChiInput).bind MeldAwareHandKey.decode).map
       (fun decoded =>
-        Tile.all.all (fun tile => decoded.hand tile == repeatedChiInput.hand tile) &&
+        Tile.all.all (fun tile => decoded.standing tile == repeatedChiInput.standing tile) &&
           decoded.fixedMelds == sortFixedMelds repeatedChiInput.fixedMelds) =
       .ok true := by
+  native_decide
+
+example :
+    ((List.range 403).all fun index =>
+      match FixedMeld.ofIndex index with
+      | some meld => meld.index == index
+      | none => false) = true := by
+  native_decide
+
+def roundTrips (input : HandSnapshot) : Bool :=
+  match MeldAwareHandKey.encode input with
+  | .error _ => false
+  | .ok key =>
+      match MeldAwareHandKey.decode key with
+      | .error _ => false
+      | .ok decoded =>
+          HandSnapshot.same input decoded &&
+            match MeldAwareHandKey.encode decoded with
+            | .ok encoded => encoded == key
+            | .error _ => false
+
+def oneMeldStanding : TileCounts := TileCounts.ofList (Tile.all.take 10)
+
+example :
+    ((List.range 403).all fun index =>
+      match FixedMeld.ofIndex index with
+      | none => false
+      | some meld =>
+          let standing := TileCounts.ofList
+            ((Tile.all.filter fun tile => meld.occupiedCounts tile == 0).take 10)
+          roundTrips { standing := standing, fixedMelds := [meld] }) = true := by
+  native_decide
+
+def meldVariants : List FixedMeld :=
+  [ chi123 ⟨0, by decide⟩, chi123 ⟨2, by decide⟩
+  , .pon (.honor Honor.east) .shimocha, .pon (.honor Honor.east) .kamicha
+  , .daiminkan (.honor Honor.east) .toimen
+  , .kakan (.honor Honor.east) .toimen
+  , .ankan (.honor Honor.east) ]
+
+example :
+    (meldVariants.all fun meld =>
+      roundTrips { standing := oneMeldStanding, fixedMelds := [meld] }) = true := by
+  native_decide
+
+example :
+    (match meldVariants.mapM (fun meld =>
+      MeldAwareHandKey.encode { standing := oneMeldStanding, fixedMelds := [meld] }) with
+    | .ok keys => keys.eraseDups.length == meldVariants.length
+    | .error _ => false) = true := by
+  native_decide
+
+example :
+    (let a : HandSnapshot := chiAndAnkanInput
+     let b : HandSnapshot := { a with fixedMelds := a.fixedMelds.reverse }
+     match MeldAwareHandKey.encode a, MeldAwareHandKey.encode b with
+     | .ok left, .ok right => left == right && roundTrips b
+     | _, _ => false) = true := by
+  native_decide
+
+example :
+    (let a : HandSnapshot :=
+      { standing := oneMeldStanding, fixedMelds := [.daiminkan (.honor Honor.east) .toimen] }
+     let b : HandSnapshot :=
+      { standing := oneMeldStanding, fixedMelds := [.kakan (.honor Honor.east) .toimen] }
+     match TileCountsKey.encode a.occupiedCounts, TileCountsKey.encode b.occupiedCounts,
+         MeldAwareHandKey.encode a, MeldAwareHandKey.encode b with
+     | .ok countsA, .ok countsB, .ok meldA, .ok meldB =>
+         countsA == countsB && meldA != meldB
+     | _, _, _, _ => false) = true := by
+  native_decide
+
+def fourKans : List FixedMeld :=
+  [ .ankan (.honor Honor.south), .ankan (.honor Honor.west)
+  , .ankan (.honor Honor.north), .ankan (.honor Honor.red) ]
+
+example :
+    (roundTrips { standing := TileCounts.ofList (Tile.all.take 13), fixedMelds := [] } &&
+     roundTrips { standing := TileCounts.ofList (Tile.all.take 14), fixedMelds := [] } &&
+     roundTrips { standing := TileCounts.ofList [.honor Honor.east], fixedMelds := fourKans } &&
+     roundTrips { standing := TileCounts.ofList [.honor Honor.east, .honor Honor.east]
+                  fixedMelds := fourKans }) = true := by
+  native_decide
+
+example :
+    (let input : HandSnapshot :=
+      { standing := TileCounts.ofList
+          (List.replicate 4 (.suited .man 0) ++ (Tile.all.drop 3).take 6)
+        fixedMelds := [chi123 ⟨0, by decide⟩] }
+     match MeldAwareHandKey.encode input with
+     | .error (.invalidPhysicalCapacity tile 5) => tile == .suited .man 0
+     | _ => false) = true := by
+  native_decide
+
+example :
+    (match MeldAwareHandKey.encode
+      { standing := TileCounts.ofList (Tile.all.take 12), fixedMelds := [] } with
+    | .error (.invalidHandTotal 12) => true
+    | _ => false) = true ∧
+    (match MeldAwareHandKey.encode
+      { standing := TileCounts.ofList [.honor Honor.east]
+        fixedMelds := fourKans ++ [.ankan (.honor Honor.white)] } with
+    | .error (.invalidMeldCount 5) => true
+    | _ => false) = true ∧
+    (match MeldAwareHandKey.decode ⟨-1⟩ with
+    | .error (.keyOutOfRange (-1)) => true
+    | _ => false) = true := by
+  native_decide
+
+example :
+    (let hand := TileCounts.ofList
+      (List.replicate 4 (.suited .man 0) ++ (Tile.all.drop 3).take 6)
+     let meld := chi123 ⟨0, by decide⟩
+     let key := meldKeyOffset 1 false +
+       fixedComboRank [meld.index] * countDigitsExactly Tile.all 10 + vectorRank hand 10
+     match MeldAwareHandKey.decode ⟨Int.ofNat key⟩ with
+     | .error (.invalidPhysicalCapacity tile 5) => tile == .suited .man 0
+     | _ => false) = true := by
   native_decide
 
 /-- info: Except.ok 89285314363 -/
@@ -149,8 +267,8 @@ example :
 #guard_msgs in
 #eval
   let hand := TileCounts.ofList (Tile.all.drop 3 |>.take 10)
-  let meld := FixedMeld.chi .man ⟨0, by decide⟩ ⟨0, by decide⟩
-  MeldedHand.encode { hand := hand, fixedMelds := [meld] }
+  let meld := FixedMeld.chi ⟨.man, ⟨0, by decide⟩⟩ ⟨0, by decide⟩
+  (MeldAwareHandKey.encode { standing := hand, fixedMelds := [meld] }).map MeldAwareHandKey.value
 
 /-- info: Except.ok true -/
 #guard_msgs in
@@ -163,8 +281,8 @@ example :
 #guard_msgs in
 #eval
   let hand := TileCounts.ofList (Tile.all.drop 3 |>.take 10)
-  let meld := FixedMeld.chi .man ⟨0, by decide⟩ ⟨0, by decide⟩
-  let input : MeldedHand := { hand := hand, fixedMelds := [meld] }
-  ((MeldedHand.encode input).bind MeldedHand.decode).map fun decoded =>
-    (Tile.all.all (fun tile => decoded.hand tile == hand tile),
+  let meld := FixedMeld.chi ⟨.man, ⟨0, by decide⟩⟩ ⟨0, by decide⟩
+  let input : HandSnapshot := { standing := hand, fixedMelds := [meld] }
+  ((MeldAwareHandKey.encode input).bind MeldAwareHandKey.decode).map fun decoded =>
+    (Tile.all.all (fun tile => decoded.standing tile == hand tile),
      decoded.fixedMelds == [meld])

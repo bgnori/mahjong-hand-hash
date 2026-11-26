@@ -3,6 +3,7 @@ module
 public import MahjongDomain.Tile
 public import MahjongDomain.Hand
 public import MahjongDomain.Parts
+public import MahjongDomain.HandSnapshot
 public meta import MahjongDomain.Tile
 
 @[expose] public section
@@ -13,7 +14,9 @@ structure TileCountsKey where
   value : Int
   deriving DecidableEq, Repr
 
-abbrev MeldedHandKey := Int
+structure MeldAwareHandKey where
+  value : Int
+  deriving DecidableEq, Repr, BEq
 
 abbrev fixedKeyLimit : Int := 9223372036854775807
 
@@ -24,7 +27,7 @@ inductive TileCountsKeyError
   | roundTripFailure (key : Int)
   deriving DecidableEq, Repr
 
-inductive MeldedHandKeyError
+inductive MeldAwareHandKeyError
   | invalidHandTotal (handTotal : Nat)
   | invalidMeldCount (meldCount : Nat)
   | invalidHandCount (tile : Tile) (count : Nat)
@@ -32,12 +35,6 @@ inductive MeldedHandKeyError
   | keyOutOfRange (key : Int)
   | roundTripFailure (key : Int)
   deriving DecidableEq, Repr
-
-inductive RelativeCaller
-  | shimocha
-  | toimen
-  | kamicha
-  deriving DecidableEq, Repr, BEq
 
 namespace RelativeCaller
 
@@ -55,48 +52,8 @@ def ofIndex (value : Nat) : Option RelativeCaller :=
 
 end RelativeCaller
 
-/-- A fixed meld that retains called-tile and relative-caller information. -/
-inductive FixedMeld
-  | chi (suit : Suit) (start : Fin 7) (calledOffset : Fin 3)
-  | pon (tile : Tile) (caller : RelativeCaller)
-  | daiminkan (tile : Tile) (caller : RelativeCaller)
-  | kakan (tile : Tile) (caller : RelativeCaller)
-  | ankan (tile : Tile)
-  deriving DecidableEq, Repr, BEq
-
-/-- Counts retained by a fixed meld and hand in a melded-hand key input. -/
-structure MeldedHand where
-  hand : TileCounts
-  fixedMelds : List FixedMeld
-
 def TileCounts.expandedList (tiles : List Tile) : TileCounts :=
   TileCounts.ofList tiles
-
-def FixedMeld.occupiedTiles : FixedMeld -> List Tile
-  | .chi suit start _ =>
-      [ Tile.suited suit (ShuntsuStart.firstRank start)
-      , Tile.suited suit (ShuntsuStart.middleRank start)
-      , Tile.suited suit (ShuntsuStart.lastRank start) ]
-  | .pon tile _ => [tile, tile, tile]
-  | .daiminkan tile _ => [tile, tile, tile, tile]
-  | .kakan tile _ => [tile, tile, tile, tile]
-  | .ankan tile => [tile, tile, tile, tile]
-
-def FixedMeld.occupiedCounts (meld : FixedMeld) : TileCounts :=
-  TileCounts.ofList meld.occupiedTiles
-
-def FixedMeld.tiles : FixedMeld -> List Tile
-  | .chi suit start _ =>
-      [ Tile.suited suit (ShuntsuStart.firstRank start)
-      , Tile.suited suit (ShuntsuStart.middleRank start)
-      , Tile.suited suit (ShuntsuStart.lastRank start) ]
-  | .pon tile _ => [tile, tile, tile]
-  | .daiminkan tile _ => [tile, tile, tile, tile]
-  | .kakan tile _ => [tile, tile, tile, tile]
-  | .ankan tile => [tile, tile, tile, tile]
-
-def FixedMeld.occupiedCountsCorrect (meld : FixedMeld) : TileCounts :=
-  TileCounts.ofList meld.tiles
 
 def countDigitsExactly (tiles : List Tile) (remaining : Nat) : Nat :=
   let variableCount := tiles.length
@@ -247,13 +204,13 @@ def fixedComboCount (meldCount : Nat) : Nat :=
   fixedWays 0 meldCount
 
 def FixedMeld.index : FixedMeld -> Nat
-  | .chi suit start offset =>
+  | .chi sequence offset =>
       let suitIndex :=
-        match suit with
+        match sequence.suit with
         | .man => 0
         | .pin => 1
         | .sou => 2
-      suitIndex * 21 + start.val * 3 + offset.val
+      suitIndex * 21 + sequence.start.val * 3 + offset.val
   | .pon tile caller => 63 + tile.index.val * 3 + caller.index
   | .daiminkan tile caller => 165 + tile.index.val * 3 + caller.index
   | .kakan tile caller => 267 + tile.index.val * 3 + caller.index
@@ -275,7 +232,7 @@ def FixedMeld.ofIndex (value : Nat) : Option FixedMeld :=
     let offsetValue := remainder % 3
     if hstart : startValue < 7 then
       if hoffset : offsetValue < 3 then
-        some (.chi suit ⟨startValue, hstart⟩ ⟨offsetValue, hoffset⟩)
+        some (.chi ⟨suit, ⟨startValue, hstart⟩⟩ ⟨offsetValue, hoffset⟩)
       else none
     else none
   else if value < 165 then
@@ -348,15 +305,15 @@ def fixedComboUnrank (meldCount rank : Nat) : Option (List Nat) :=
           (go head (remaining - 1) restRank).map (fun rest => head :: rest)
   go 0 meldCount rank
 
-def MeldedHand.fixedMeldCount (input : MeldedHand) : Nat :=
+def HandSnapshot.fixedMeldCount (input : HandSnapshot) : Nat :=
   input.fixedMelds.length
 
-def MeldedHand.fixedKeySegment (input : MeldedHand) : Except MeldedHandKeyError Nat := do
+def HandSnapshot.fixedKeySegment (input : HandSnapshot) : Except MeldAwareHandKeyError Nat := do
   let meldCount := input.fixedMeldCount
   if meldCount > 4 then
     .error (.invalidMeldCount meldCount)
   else
-    let handTotal := input.hand.total
+    let handTotal := input.standing.total
     let expected13 : Nat := 13 - 3 * meldCount
     let expected14 : Nat := 14 - 3 * meldCount
     if handTotal ≠ expected13 ∧ handTotal ≠ expected14 then
@@ -364,28 +321,23 @@ def MeldedHand.fixedKeySegment (input : MeldedHand) : Except MeldedHandKeyError 
     else
       pure handTotal
 
-def MeldedHand.valid (input : MeldedHand) : Except MeldedHandKeyError Unit := do
+def HandSnapshot.valid (input : HandSnapshot) : Except MeldAwareHandKeyError Unit := do
   let meldCount := input.fixedMeldCount
   if meldCount > 4 then
     .error (.invalidMeldCount meldCount)
   else
-    let handTotal := input.hand.total
+    let handTotal := input.standing.total
     let expected13 : Nat := 13 - 3 * meldCount
     let expected14 : Nat := 14 - 3 * meldCount
     if handTotal ≠ expected13 ∧ handTotal ≠ expected14 then
       .error (.invalidHandTotal handTotal)
-    else if ¬ input.hand.Valid then
-      let tile := Tile.all.find? (fun tile => 4 < input.hand tile) |>.getD (.suited .man 0)
-      .error (.invalidHandCount tile (input.hand tile))
     else
-      let occupied : TileCounts :=
-        fun tile => input.hand tile +
-          input.fixedMelds.foldl
-            (fun count meld => count + meld.occupiedCountsCorrect tile)
-            0
-      match Tile.all.find? (fun tile => 4 < occupied tile) with
-      | some tile => .error (.invalidPhysicalCapacity tile (occupied tile))
-      | none => pure ()
+      match Tile.all.find? (fun tile => copiesPerTile < input.standing tile) with
+      | some tile => .error (.invalidHandCount tile (input.standing tile))
+      | none =>
+          match Tile.all.find? (fun tile => copiesPerTile < input.occupiedCounts tile) with
+          | some tile => .error (.invalidPhysicalCapacity tile (input.occupiedCounts tile))
+          | none => pure ()
 
 def meldKeyOffset (meldCount : Nat) (base14 : Bool) : Nat :=
   let previous :=
@@ -408,13 +360,13 @@ def meldKeyMax : Nat :=
         countDigitsExactly Tile.all (14 - 3 * m) * f)
     0
 
-def meldedHandEncodeNat (input : MeldedHand) :
-    Except MeldedHandKeyError Nat := do
+def meldedHandEncodeNat (input : HandSnapshot) :
+    Except MeldAwareHandKeyError Nat := do
   _ ← input.valid
   let meldCount := input.fixedMeldCount
-  let handTotal := input.hand.total
+  let handTotal := input.standing.total
   let base14 := handTotal = 14 - 3 * meldCount
-  let handRank := vectorRank input.hand handTotal
+  let handRank := vectorRank input.standing handTotal
   let sorted := sortFixedMelds input.fixedMelds
   let fixedRank := fixedComboRank (sorted.map FixedMeld.index)
   let handCount := countDigitsExactly Tile.all handTotal
@@ -423,8 +375,8 @@ def meldedHandEncodeNat (input : MeldedHand) :
       fixedRank * handCount + handRank
   pure keyNat
 
-def meldedHandDecodeUnchecked (key : MeldedHandKey) :
-    Except MeldedHandKeyError MeldedHand :=
+def meldedHandDecodeUnchecked (key : Int) :
+    Except MeldAwareHandKeyError HandSnapshot :=
   if key < 0 then
     .error (.keyOutOfRange key)
   else
@@ -433,7 +385,7 @@ def meldedHandDecodeUnchecked (key : MeldedHandKey) :
       .error (.keyOutOfRange key)
     else
       let rec find (m : Nat) (offset : Nat) :
-          Except MeldedHandKeyError MeldedHand :=
+          Except MeldAwareHandKeyError HandSnapshot :=
         if m ≥ 5 then
           .error (.keyOutOfRange key)
         else
@@ -454,7 +406,7 @@ def meldedHandDecodeUnchecked (key : MeldedHandKey) :
       find 0 0
 where
   decodeSegment (meldCount handTotal handCount fixedCount segmentRank : Nat) :
-      Except MeldedHandKeyError MeldedHand := do
+      Except MeldAwareHandKeyError HandSnapshot := do
     let fixedRank := segmentRank / handCount
     let handRank := segmentRank % handCount
     if fixedRank ≥ fixedCount then
@@ -470,16 +422,12 @@ where
             .error (.keyOutOfRange key)
           else
             let melds := meldOptions.filterMap id
-            let input : MeldedHand := { hand := hand, fixedMelds := melds }
+            let input : HandSnapshot := { standing := hand, fixedMelds := melds }
             _ ← input.valid
             pure input
 
-def MeldedHand.same (left right : MeldedHand) : Bool :=
-  TileCounts.same left.hand right.hand &&
-    sortFixedMelds left.fixedMelds == sortFixedMelds right.fixedMelds
-
-def MeldedHand.encode (input : MeldedHand) :
-    Except MeldedHandKeyError MeldedHandKey := do
+def MeldAwareHandKey.encode (input : HandSnapshot) :
+    Except MeldAwareHandKeyError MeldAwareHandKey := do
   let key ← meldedHandEncodeNat input
   if key > fixedKeyLimit.toNat then
     .error (.keyOutOfRange (Int.ofNat key))
@@ -487,22 +435,22 @@ def MeldedHand.encode (input : MeldedHand) :
     match meldedHandDecodeUnchecked (Int.ofNat key) with
     | .error _ => .error (.roundTripFailure (Int.ofNat key))
     | .ok decoded =>
-        if MeldedHand.same decoded input then
-          pure (Int.ofNat key)
+        if HandSnapshot.same decoded input then
+          pure ⟨Int.ofNat key⟩
         else
           .error (.roundTripFailure (Int.ofNat key))
 
-def MeldedHand.decode (key : MeldedHandKey) :
-    Except MeldedHandKeyError MeldedHand := do
-  if key < 0 ∨ key > fixedKeyLimit then
-    .error (.keyOutOfRange key)
+def MeldAwareHandKey.decode (key : MeldAwareHandKey) :
+    Except MeldAwareHandKeyError HandSnapshot := do
+  if key.value < 0 ∨ key.value > fixedKeyLimit then
+    .error (.keyOutOfRange key.value)
   else
-    let decoded ← meldedHandDecodeUnchecked key
+    let decoded ← meldedHandDecodeUnchecked key.value
     match meldedHandEncodeNat decoded with
-    | .error _ => .error (.roundTripFailure key)
+    | .error _ => .error (.roundTripFailure key.value)
     | .ok encoded =>
-        if encoded = key.toNat then pure decoded
-        else .error (.roundTripFailure key)
+        if encoded = key.value.toNat then pure decoded
+        else .error (.roundTripFailure key.value)
 
 namespace TileCountsKey
 
@@ -510,11 +458,11 @@ def keyMax : Nat := collectionKeyMax
 
 end TileCountsKey
 
-namespace MeldedHand
+namespace MeldAwareHandKey
 
 def keyMax : Nat := meldKeyMax
 
-end MeldedHand
+end MeldAwareHandKey
 
 example : TileCountsKey.decode ⟨-1⟩ = .error (.keyOutOfRange (-1)) := by
   rfl
