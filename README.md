@@ -16,6 +16,12 @@ previously reported collision in meld-combination ranking has been corrected
 and covered by a regression test. Do not use its keys as persistent
 identifiers until the encoding has been fully verified and versioned.
 
+For tile-count keys, Lean proves the candidate count for up to 34 tile kinds
+and 18 tiles, successful encoding, round-trip recovery, injectivity, and the
+INT64 range for every valid input. A successfully decoded key also re-encodes
+to the same key. It remains unproven that every non-negative key below
+`keyMax` decodes successfully (i.e. that the key space has no holes).
+
 The Lean regression job requires at least one `.lean` file under
 `MahjongHandHashTests/` and builds the `MahjongHandHash` and
 `MahjongHandHashTests` Lake targets. A sibling checkout of

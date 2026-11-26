@@ -12,6 +12,25 @@ assert_no_sorry MeldedHand.encode
 assert_no_sorry MeldedHand.decode
 assert_no_sorry TileCountsKey.encode
 assert_no_sorry TileCountsKey.decode
+assert_no_sorry countDigitsExactly_cons
+assert_no_sorry countDigitsExactly_nil
+assert_no_sorry countDigitsExactly_eq_digitVectors_length
+assert_no_sorry digitVectors_mem
+assert_no_sorry digitVectors_nodup
+assert_no_sorry vectorRank_go_lt
+assert_no_sorry vectorDigitsUnrank_go_rank
+assert_no_sorry vectorRank_lt
+assert_no_sorry vectorDigitsUnrank_rank
+assert_no_sorry countsFromDigits_map
+assert_no_sorry countsFromDigits_unrank_rank
+assert_no_sorry TileCountsKey.keyMax_le_fixedKeyLimit
+assert_no_sorry TileCountsKey.encode_valid
+assert_no_sorry TileCountsKey.decode_encode_valid
+assert_no_sorry TileCountsKey.encode_valid_injective
+assert_no_sorry TileCountsKey.encode_range
+assert_no_sorry TileCountsKey.decode_encode
+assert_no_sorry TileCountsKey.encode_decode
+assert_no_sorry TileCountsKey.encode_injective_on_success
 
 example : TileCountsKey.decode ⟨-1⟩ = .error (.keyOutOfRange (-1)) := by
   rfl
