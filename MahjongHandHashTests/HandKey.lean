@@ -10,19 +10,19 @@ open MahjongDomain
 assert_no_sorry MeldedHand.valid
 assert_no_sorry MeldedHand.encode
 assert_no_sorry MeldedHand.decode
-assert_no_sorry TileCollection.encode
-assert_no_sorry TileCollection.decode
+assert_no_sorry TileCountsKey.encode
+assert_no_sorry TileCountsKey.decode
 
-example : TileCollection.decode (-1) = .error (.keyOutOfRange (-1)) := by
+example : TileCountsKey.decode ⟨-1⟩ = .error (.keyOutOfRange (-1)) := by
   rfl
 
 example :
-    TileCollection.keyMax ≤ fixedKeyLimit.toNat ∧
+    TileCountsKey.keyMax ≤ fixedKeyLimit.toNat ∧
       MeldedHand.keyMax ≤ fixedKeyLimit.toNat := by
   native_decide
 
 example :
-    TileCollection.decode (fixedKeyLimit + 1) =
+    TileCountsKey.decode ⟨fixedKeyLimit + 1⟩ =
       .error (.keyOutOfRange (fixedKeyLimit + 1)) := by
   rfl
 
@@ -30,6 +30,44 @@ example :
     MeldedHand.decode (fixedKeyLimit + 1) =
       .error (.keyOutOfRange (fixedKeyLimit + 1)) := by
   rfl
+
+example :
+    (TileCountsKey.decode ⟨0⟩ |>.bind TileCountsKey.encode) = .ok ⟨0⟩ ∧
+      (TileCountsKey.decode ⟨Int.ofNat (TileCountsKey.keyMax - 1)⟩ |>.bind
+        TileCountsKey.encode) = .ok ⟨Int.ofNat (TileCountsKey.keyMax - 1)⟩ := by
+  native_decide
+
+example :
+    (match TileCountsKey.decode ⟨Int.ofNat TileCountsKey.keyMax⟩ with
+    | .error (.keyOutOfRange _) => true
+    | _ => false) = true := by
+  native_decide
+
+example :
+    (match TileCountsKey.encode (TileCounts.ofList (Tile.all.take 12)) with
+    | .error (.invalidTotal 12) => true
+    | _ => false) = true ∧
+    (match TileCountsKey.encode (TileCounts.ofList (Tile.all.take 19)) with
+    | .error (.invalidTotal 19) => true
+    | _ => false) = true := by
+  native_decide
+
+example :
+    (match TileCountsKey.encode (TileCounts.ofList
+      (List.replicate 5 (.suited .man 0) ++ (Tile.all.drop 1).take 8)) with
+    | .error (.invalidCount _ 5) => true
+    | _ => false) = true := by
+  native_decide
+
+example :
+    (match TileCountsKey.encode (TileCounts.ofList
+      (List.replicate 4 (.suited .man 0) ++ (Tile.all.drop 1).take 14)) with
+    | .ok key =>
+        match TileCountsKey.decode key with
+        | .ok counts => counts (.suited .man 0) == 4 && counts.total == 18
+        | .error _ => false
+    | .error _ => false) = true := by
+  native_decide
 
 def collisionRegressionHand : TileCounts :=
   TileCounts.ofList
@@ -71,7 +109,7 @@ example :
 
 /-- info: Except.ok 89285314363 -/
 #guard_msgs in
-#eval TileCollection.encode (TileCounts.ofList (Tile.all.take 13))
+#eval (TileCountsKey.encode (TileCounts.ofList (Tile.all.take 13))).map TileCountsKey.value
 
 /-- info: Except.ok 425821417872 -/
 #guard_msgs in
@@ -84,7 +122,7 @@ example :
 #guard_msgs in
 #eval
   let counts := TileCounts.ofList (Tile.all.take 13)
-  ((TileCollection.encode counts).bind TileCollection.decode).map fun decoded =>
+  ((TileCountsKey.encode counts).bind TileCountsKey.decode).map fun decoded =>
     Tile.all.all fun tile => decoded tile == counts tile
 
 /-- info: Except.ok (true, true) -/

@@ -9,12 +9,15 @@ public meta import MahjongDomain.Tile
 
 namespace MahjongDomain
 
-abbrev TileCollectionKey := Int
+structure TileCountsKey where
+  value : Int
+  deriving DecidableEq, Repr
+
 abbrev MeldedHandKey := Int
 
 abbrev fixedKeyLimit : Int := 9223372036854775807
 
-inductive TileCollectionKeyError
+inductive TileCountsKeyError
   | invalidTotal (total : Nat)
   | invalidCount (tile : Tile) (count : Nat)
   | keyOutOfRange (key : Int)
@@ -65,9 +68,6 @@ inductive FixedMeld
 structure MeldedHand where
   hand : TileCounts
   fixedMelds : List FixedMeld
-
-def TileCounts.total (counts : TileCounts) : Nat :=
-  ∑ tile : Tile, counts tile
 
 def TileCounts.expandedList (tiles : List Tile) : TileCounts :=
   TileCounts.ofList tiles
@@ -170,9 +170,9 @@ def collectionKeyMax : Nat :=
     (fun total n => total + if 13 ≤ n then countDigitsExactly Tile.all n else 0)
     0)
 
-def collectionEncodeNat (counts : TileCounts) : Except TileCollectionKeyError Nat := do
+def collectionEncodeNat (counts : TileCounts) : Except TileCountsKeyError Nat := do
   let total := counts.total
-  if ¬(13 ≤ total ∧ total ≤ 18) then
+  if ¬ counts.HasFullHandSize then
     .error (.invalidTotal total)
   else if ¬ counts.Valid then
     let tile := Tile.all.find? (fun tile => 4 < counts tile) |>.getD (.suited .man 0)
@@ -181,12 +181,12 @@ def collectionEncodeNat (counts : TileCounts) : Except TileCollectionKeyError Na
     pure (collectionOffset total + vectorRank counts total)
 
 def collectionDecodeNat (key : Nat) :
-    Except TileCollectionKeyError (TileCounts × Nat) := do
+    Except TileCountsKeyError (TileCounts × Nat) := do
   if key ≥ collectionKeyMax then
     .error (.keyOutOfRange (Int.ofNat key))
   else
     let rec find (totals : List Nat) (offset : Nat) :
-        Except TileCollectionKeyError (TileCounts × Nat) :=
+        Except TileCountsKeyError (TileCounts × Nat) :=
       match totals with
       | [] => .error (.keyOutOfRange (Int.ofNat key))
       | total :: rest =>
@@ -197,8 +197,8 @@ def collectionDecodeNat (key : Nat) :
             find rest (offset + count)
     find [13, 14, 15, 16, 17, 18] 0
 
-def collectionDecodeUnchecked (key : TileCollectionKey) :
-    Except TileCollectionKeyError TileCounts := do
+def collectionDecodeUnchecked (key : Int) :
+    Except TileCountsKeyError TileCounts := do
   if key < 0 then
     .error (.keyOutOfRange key)
   else
@@ -208,8 +208,8 @@ def collectionDecodeUnchecked (key : TileCollectionKey) :
 def TileCounts.same (left right : TileCounts) : Bool :=
   Tile.all.all fun tile => left tile == right tile
 
-def TileCollection.encode (counts : TileCounts) :
-    Except TileCollectionKeyError TileCollectionKey := do
+def TileCountsKey.encode (counts : TileCounts) :
+    Except TileCountsKeyError TileCountsKey := do
   let key ← collectionEncodeNat counts
   if key > fixedKeyLimit.toNat then
     .error (.keyOutOfRange (Int.ofNat key))
@@ -218,12 +218,13 @@ def TileCollection.encode (counts : TileCounts) :
     | .error _ => .error (.roundTripFailure (Int.ofNat key))
     | .ok decoded =>
         if TileCounts.same decoded counts then
-          pure (Int.ofNat key)
+          pure ⟨Int.ofNat key⟩
         else
           .error (.roundTripFailure (Int.ofNat key))
 
-def TileCollection.decode (key : TileCollectionKey) :
-    Except TileCollectionKeyError TileCounts := do
+def TileCountsKey.decode (input : TileCountsKey) :
+    Except TileCountsKeyError TileCounts := do
+  let key := input.value
   if key < 0 ∨ key > fixedKeyLimit then
     .error (.keyOutOfRange key)
   else
@@ -503,11 +504,11 @@ def MeldedHand.decode (key : MeldedHandKey) :
         if encoded = key.toNat then pure decoded
         else .error (.roundTripFailure key)
 
-namespace TileCollection
+namespace TileCountsKey
 
 def keyMax : Nat := collectionKeyMax
 
-end TileCollection
+end TileCountsKey
 
 namespace MeldedHand
 
@@ -515,7 +516,7 @@ def keyMax : Nat := meldKeyMax
 
 end MeldedHand
 
-example : TileCollection.decode (-1) = .error (.keyOutOfRange (-1)) := by
+example : TileCountsKey.decode ⟨-1⟩ = .error (.keyOutOfRange (-1)) := by
   rfl
 
 end MahjongDomain
