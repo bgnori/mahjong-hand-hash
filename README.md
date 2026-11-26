@@ -5,6 +5,9 @@ Experimental keys for Mahjong hands, using normalized tile types from
 `MahjongHandHash.HandKey`; the existing declarations remain in the
 `MahjongDomain` namespace.
 
+See the [glossary](docs/GLOSSARY.md) for the planned key names and their
+meanings.
+
 The implementation is a draft. Encode/decode calls check the non-negative
 signed INT64 range and verify their inverse operation at runtime; the
 key-space bounds are also tested. Full formal proofs and comprehensive
