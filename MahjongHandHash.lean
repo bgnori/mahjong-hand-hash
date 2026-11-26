@@ -1,5 +1,4 @@
 module
 
 public import MahjongHandHash.HandKey
-public import MahjongHandHash.TileCountsKeyDigits
-public import MahjongHandHash.TileCountsKeyTotal
+public import MahjongHandHash.TileCountsKeySurjective

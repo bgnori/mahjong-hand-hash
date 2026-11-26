@@ -23,10 +23,16 @@ assert_no_sorry vectorRank_lt
 assert_no_sorry vectorDigitsUnrank_rank
 assert_no_sorry countsFromDigits_map
 assert_no_sorry countsFromDigits_unrank_rank
+assert_no_sorry vectorRank_unrank
 assert_no_sorry TileCountsKey.keyMax_le_fixedKeyLimit
 assert_no_sorry TileCountsKey.encode_valid
 assert_no_sorry TileCountsKey.decode_encode_valid
 assert_no_sorry TileCountsKey.encode_valid_injective
+assert_no_sorry TileCountsKey.decode_success
+assert_no_sorry TileCountsKey.encode_surjective
+assert_no_sorry TileCountsKey.decode_outside
+assert_no_sorry TileCountsKey.decode_success_iff
+assert_no_sorry TileCountsKey.decode_valid
 assert_no_sorry TileCountsKey.encode_range
 assert_no_sorry TileCountsKey.decode_encode
 assert_no_sorry TileCountsKey.encode_decode
@@ -54,6 +60,15 @@ example :
     (TileCountsKey.decode ⟨0⟩ |>.bind TileCountsKey.encode) = .ok ⟨0⟩ ∧
       (TileCountsKey.decode ⟨Int.ofNat (TileCountsKey.keyMax - 1)⟩ |>.bind
         TileCountsKey.encode) = .ok ⟨Int.ofNat (TileCountsKey.keyMax - 1)⟩ := by
+  native_decide
+
+example :
+    ([14, 15, 16, 17, 18].all fun total =>
+      let offset := collectionOffset total
+      match TileCountsKey.decode ⟨Int.ofNat (offset - 1)⟩,
+          TileCountsKey.decode ⟨Int.ofNat offset⟩ with
+      | .ok previous, .ok next => previous.total == total - 1 && next.total == total
+      | _, _ => false) = true := by
   native_decide
 
 example :

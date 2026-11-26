@@ -89,27 +89,27 @@ theorem vectorDigitsUnrank_go_rank (counts : TileCounts) (tiles : List Tile)
       simpa only [List.map_cons] using congrArg (fun p : List Nat × Nat =>
         (counts tile :: p.1, p.2)) hrec
 
-private theorem tile_all_nodup : Tile.all.Nodup := by decide
+theorem Tile.all_nodup : Tile.all.Nodup := by decide
 
-private theorem tile_all_sum (counts : TileCounts) : (Tile.all.map counts).sum = counts.total := by
+theorem TileCounts.sum_all (counts : TileCounts) : (Tile.all.map counts).sum = counts.total := by
   have hall : Tile.all.toFinset = Finset.univ := by
     apply Finset.ext
     intro tile
     simp [Tile.mem_all]
-  rw [← List.sum_toFinset counts tile_all_nodup, hall]
+  rw [← List.sum_toFinset counts Tile.all_nodup, hall]
   rfl
 
 theorem vectorRank_lt (counts : TileCounts) (valid : counts.Valid)
     (htotal : counts.total ≤ 18) :
     vectorRank counts counts.total < countDigitsExactly Tile.all counts.total := by
   exact vectorRank_go_lt counts Tile.all counts.total (by simp [Tile.all_length]) htotal
-    (tile_all_sum counts) (by intro tile _; exact valid tile)
+    (TileCounts.sum_all counts) (by intro tile _; exact valid tile)
 
 theorem vectorDigitsUnrank_rank (counts : TileCounts) (valid : counts.Valid)
     (htotal : counts.total ≤ 18) :
     vectorDigitsUnrank counts.total (vectorRank counts counts.total) = Tile.all.map counts := by
   have h := vectorDigitsUnrank_go_rank counts Tile.all counts.total
-    (by simp [Tile.all_length]) htotal (tile_all_sum counts)
+    (by simp [Tile.all_length]) htotal (TileCounts.sum_all counts)
     (by intro tile _; exact valid tile)
   exact congrArg Prod.fst h
 
@@ -154,7 +154,7 @@ theorem countsFromDigits_map (counts : TileCounts) :
     countsFromDigits (Tile.all.map counts) = counts := by
   funext tile
   rw [countsFromDigits, TileCounts.ofList_apply]
-  exact reconstruct_list Tile.all counts tile tile_all_nodup (Tile.mem_all tile)
+  exact reconstruct_list Tile.all counts tile Tile.all_nodup (Tile.mem_all tile)
 
 /-- Every valid count vector of at most 18 tiles is recovered from its rank. -/
 theorem countsFromDigits_unrank_rank (counts : TileCounts) (valid : counts.Valid)
