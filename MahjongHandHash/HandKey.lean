@@ -30,8 +30,10 @@ inductive TileCountsKeyError
 inductive MeldAwareHandKeyError
   | invalidHandTotal (handTotal : Nat)
   | invalidMeldCount (meldCount : Nat)
-  | invalidHandCount (tile : Tile) (count : Nat)
-  | invalidPhysicalCapacity (tile : Tile) (count : Nat)
+  | invalidHandCount (tile : Tile37) (count : Nat)
+  | invalidPhysicalCapacity (tile : Tile37) (count : Nat)
+  | invalidMeldComposition
+  | redTileUnsupported (tile : Tile37)
   | keyOutOfRange (key : Int)
   | roundTripFailure (key : Int)
   deriving DecidableEq, Repr
@@ -203,7 +205,7 @@ def fixedWays (first remaining : Nat) : Nat :=
 def fixedComboCount (meldCount : Nat) : Nat :=
   fixedWays 0 meldCount
 
-def FixedMeld.index : FixedMeld -> Nat
+def FixedMeldShape.index : FixedMeldShape -> Nat
   | .chi sequence offset =>
       let suitIndex :=
         match sequence.suit with
@@ -215,6 +217,9 @@ def FixedMeld.index : FixedMeld -> Nat
   | .daiminkan tile caller => 165 + tile.index.val * 3 + caller.index
   | .kakan tile caller => 267 + tile.index.val * 3 + caller.index
   | .ankan tile => 369 + tile.index.val
+
+def FixedMeld.index (meld : FixedMeld) : Nat :=
+  meld.shape.index
 
 def tileFromIndex (value : Nat) : Option Tile :=
   Tile.all[value]?
@@ -332,12 +337,24 @@ def HandSnapshot.valid (input : HandSnapshot) : Except MeldAwareHandKeyError Uni
     if handTotal ≠ expected13 ∧ handTotal ≠ expected14 then
       .error (.invalidHandTotal handTotal)
     else
-      match Tile.all.find? (fun tile => copiesPerTile < input.standing tile) with
-      | some tile => .error (.invalidHandCount tile (input.standing tile))
-      | none =>
-          match Tile.all.find? (fun tile => copiesPerTile < input.occupiedCounts tile) with
-          | some tile => .error (.invalidPhysicalCapacity tile (input.occupiedCounts tile))
-          | none => pure ()
+      if !input.hasValidMeldCompositions then
+        .error .invalidMeldComposition
+      else
+        match Tile37.all.find? (fun tile => input.occupiedCounts tile > 0 &&
+          match tile with
+          | .akaFive _ => true
+          | .normal _ => false) with
+        | some tile => .error (.redTileUnsupported tile)
+        | none =>
+          match Tile37.all.find? (fun tile =>
+            tile.capacity < input.standing tile) with
+          | some tile => .error (.invalidHandCount tile (input.standing tile))
+          | none =>
+            match Tile37.all.find? (fun tile =>
+              tile.capacity < input.occupiedCounts tile) with
+            | some tile =>
+              .error (.invalidPhysicalCapacity tile (input.occupiedCounts tile))
+            | none => pure ()
 
 def meldKeyOffset (meldCount : Nat) (base14 : Bool) : Nat :=
   let previous :=
@@ -366,7 +383,7 @@ def meldedHandEncodeNat (input : HandSnapshot) :
   let meldCount := input.fixedMeldCount
   let handTotal := input.standing.total
   let base14 := handTotal = 14 - 3 * meldCount
-  let handRank := vectorRank input.standing handTotal
+  let handRank := vectorRank input.normalizedStanding handTotal
   let sorted := sortFixedMelds input.fixedMelds
   let fixedRank := fixedComboRank (sorted.map FixedMeld.index)
   let handCount := countDigitsExactly Tile.all handTotal
@@ -422,7 +439,8 @@ where
             .error (.keyOutOfRange key)
           else
             let melds := meldOptions.filterMap id
-            let input : HandSnapshot := { standing := hand, fixedMelds := melds }
+            let input : HandSnapshot :=
+              { standing := Tile37Counts.fromNormalized hand, fixedMelds := melds }
             _ ← input.valid
             pure input
 

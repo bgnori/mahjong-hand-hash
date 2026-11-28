@@ -18,10 +18,14 @@ identifiers until the encoding has been fully verified and versioned.
 
 `MeldAwareHandKey.encode` accepts the shared `MahjongDomain.HandSnapshot`;
 `decode` returns the same shared representation, with melds in canonical key
-order. Hand identity ignores meld order but retains duplicates and call details.
-Inputs are checked for fixed-meld count, standing size and combined four-copy
-capacity. The current ranking remains experimental and its full correctness
-has not been proved.
+order. The shared snapshot preserves red-five identity in `Tile37Counts` and
+fixed-meld tile compositions, but this legacy 34-kind key does not encode it:
+red-containing snapshots are explicitly rejected with `redTileUnsupported`.
+Hand identity ignores meld order but retains duplicates and call details.
+Inputs are checked for fixed-meld count, standing size, valid meld composition
+and combined tile capacity. A versioned 37-kind key remains future work. The
+current ranking remains experimental and its full correctness has not been
+proved.
 
 For tile-count keys, Lean proves the candidate count for up to 34 tile kinds
 and 18 tiles, successful encoding, round-trip recovery, injectivity, and the

@@ -103,8 +103,8 @@ example :
     | .error _ => false) = true := by
   native_decide
 
-def collisionRegressionHand : TileCounts :=
-  TileCounts.ofList
+def collisionRegressionHand : Tile37Counts :=
+  Tile37Counts.ofNormalizedList
     [ Tile.suited .man ⟨3, by decide⟩
     , Tile.suited .man ⟨4, by decide⟩
     , Tile.suited .man ⟨5, by decide⟩
@@ -136,7 +136,8 @@ example :
 example :
     ((MeldAwareHandKey.encode repeatedChiInput).bind MeldAwareHandKey.decode).map
       (fun decoded =>
-        Tile.all.all (fun tile => decoded.standing tile == repeatedChiInput.standing tile) &&
+        Tile.all.all (fun tile =>
+          decoded.standing (.normal tile) == repeatedChiInput.standing (.normal tile)) &&
           decoded.fixedMelds == sortFixedMelds repeatedChiInput.fixedMelds) =
       .ok true := by
   native_decide
@@ -160,16 +161,24 @@ def roundTrips (input : HandSnapshot) : Bool :=
             | .ok encoded => encoded == key
             | .error _ => false
 
-def oneMeldStanding : TileCounts := TileCounts.ofList (Tile.all.take 10)
+def oneMeldStanding : Tile37Counts :=
+  Tile37Counts.ofNormalizedList (Tile.all.take 10)
 
 example :
     ((List.range 403).all fun index =>
       match FixedMeld.ofIndex index with
       | none => false
       | some meld =>
-          let standing := TileCounts.ofList
-            ((Tile.all.filter fun tile => meld.occupiedCounts tile == 0).take 10)
-          roundTrips { standing := standing, fixedMelds := [meld] }) = true := by
+          let standing := Tile37Counts.ofNormalizedList
+            ((Tile.all.filter fun tile => meld.occupiedCounts (.normal tile) == 0).take 10)
+          let input : HandSnapshot := { standing, fixedMelds := [meld] }
+          match MeldAwareHandKey.encode input with
+          | .ok _ => roundTrips input
+          | .error (.invalidPhysicalCapacity tile 4) =>
+              tile == .normal (.suited .man 4) ||
+                tile == .normal (.suited .pin 4) ||
+                tile == .normal (.suited .sou 4)
+          | .error _ => false) = true := by
   native_decide
 
 def meldVariants : List FixedMeld :=
@@ -204,7 +213,8 @@ example :
       { standing := oneMeldStanding, fixedMelds := [.daiminkan (.honor Honor.east) .toimen] }
      let b : HandSnapshot :=
       { standing := oneMeldStanding, fixedMelds := [.kakan (.honor Honor.east) .toimen] }
-     match TileCountsKey.encode a.occupiedCounts, TileCountsKey.encode b.occupiedCounts,
+     match TileCountsKey.encode a.normalizedOccupiedCounts,
+         TileCountsKey.encode b.normalizedOccupiedCounts,
          MeldAwareHandKey.encode a, MeldAwareHandKey.encode b with
      | .ok countsA, .ok countsB, .ok meldA, .ok meldB =>
          countsA == countsB && meldA != meldB
@@ -216,30 +226,31 @@ def fourKans : List FixedMeld :=
   , .ankan (.honor Honor.north), .ankan (.honor Honor.red) ]
 
 example :
-    (roundTrips { standing := TileCounts.ofList (Tile.all.take 13), fixedMelds := [] } &&
-     roundTrips { standing := TileCounts.ofList (Tile.all.take 14), fixedMelds := [] } &&
-     roundTrips { standing := TileCounts.ofList [.honor Honor.east], fixedMelds := fourKans } &&
-     roundTrips { standing := TileCounts.ofList [.honor Honor.east, .honor Honor.east]
+    (roundTrips { standing := Tile37Counts.ofNormalizedList (Tile.all.take 13), fixedMelds := [] } &&
+     roundTrips { standing := Tile37Counts.ofNormalizedList (Tile.all.take 14), fixedMelds := [] } &&
+     roundTrips { standing := Tile37Counts.ofNormalizedList [.honor Honor.east], fixedMelds := fourKans } &&
+     roundTrips { standing := Tile37Counts.ofNormalizedList [.honor Honor.east, .honor Honor.east]
                   fixedMelds := fourKans }) = true := by
   native_decide
 
 example :
     (let input : HandSnapshot :=
-      { standing := TileCounts.ofList
+      { standing := Tile37Counts.ofNormalizedList
           (List.replicate 4 (.suited .man 0) ++ (Tile.all.drop 3).take 6)
         fixedMelds := [chi123 ⟨0, by decide⟩] }
      match MeldAwareHandKey.encode input with
-     | .error (.invalidPhysicalCapacity tile 5) => tile == .suited .man 0
+     | .error (.invalidPhysicalCapacity tile 5) =>
+         tile == .normal (.suited .man 0)
      | _ => false) = true := by
   native_decide
 
 example :
     (match MeldAwareHandKey.encode
-      { standing := TileCounts.ofList (Tile.all.take 12), fixedMelds := [] } with
+      { standing := Tile37Counts.ofNormalizedList (Tile.all.take 12), fixedMelds := [] } with
     | .error (.invalidHandTotal 12) => true
     | _ => false) = true ∧
     (match MeldAwareHandKey.encode
-      { standing := TileCounts.ofList [.honor Honor.east]
+      { standing := Tile37Counts.ofNormalizedList [.honor Honor.east]
         fixedMelds := fourKans ++ [.ankan (.honor Honor.white)] } with
     | .error (.invalidMeldCount 5) => true
     | _ => false) = true ∧
@@ -249,14 +260,41 @@ example :
   native_decide
 
 example :
-    (let hand := TileCounts.ofList
+    (let hand := Tile37Counts.ofNormalizedList
       (List.replicate 4 (.suited .man 0) ++ (Tile.all.drop 3).take 6)
      let meld := chi123 ⟨0, by decide⟩
      let key := meldKeyOffset 1 false +
-       fixedComboRank [meld.index] * countDigitsExactly Tile.all 10 + vectorRank hand 10
+       fixedComboRank [meld.index] * countDigitsExactly Tile.all 10 +
+         vectorRank hand.normalized 10
      match MeldAwareHandKey.decode ⟨Int.ofNat key⟩ with
-     | .error (.invalidPhysicalCapacity tile 5) => tile == .suited .man 0
+     | .error (.invalidPhysicalCapacity tile 5) =>
+         tile == .normal (.suited .man 0)
      | _ => false) = true := by
+  native_decide
+
+example :
+    (match MeldAwareHandKey.encode
+      { standing := Tile37Counts.ofList
+          ([.akaFive .man] ++ ((Tile.all.drop 1).take 12).map Tile37.normal)
+        fixedMelds := [] } with
+    | .error (.redTileUnsupported (.akaFive .man)) => true
+    | _ => false) = true := by
+  native_decide
+
+def redChiMeld : FixedMeld :=
+  .chiWithTiles
+    ⟨.man, ⟨2, by decide⟩⟩
+    ⟨2, by decide⟩
+    (Multiset.ofList
+      [ .normal (.suited .man ⟨2, by decide⟩)
+      , .normal (.suited .man ⟨3, by decide⟩)
+      , .akaFive .man ])
+
+example :
+    (match MeldAwareHandKey.encode
+      { standing := oneMeldStanding, fixedMelds := [redChiMeld] } with
+    | .error (.redTileUnsupported (.akaFive .man)) => true
+    | _ => false) = true := by
   native_decide
 
 /-- info: Except.ok 89285314363 -/
@@ -266,7 +304,7 @@ example :
 /-- info: Except.ok 425821417872 -/
 #guard_msgs in
 #eval
-  let hand := TileCounts.ofList (Tile.all.drop 3 |>.take 10)
+  let hand := Tile37Counts.ofNormalizedList (Tile.all.drop 3 |>.take 10)
   let meld := FixedMeld.chi ⟨.man, ⟨0, by decide⟩⟩ ⟨0, by decide⟩
   (MeldAwareHandKey.encode { standing := hand, fixedMelds := [meld] }).map MeldAwareHandKey.value
 
@@ -280,9 +318,10 @@ example :
 /-- info: Except.ok (true, true) -/
 #guard_msgs in
 #eval
-  let hand := TileCounts.ofList (Tile.all.drop 3 |>.take 10)
+  let hand := Tile37Counts.ofNormalizedList (Tile.all.drop 3 |>.take 10)
   let meld := FixedMeld.chi ⟨.man, ⟨0, by decide⟩⟩ ⟨0, by decide⟩
   let input : HandSnapshot := { standing := hand, fixedMelds := [meld] }
   ((MeldAwareHandKey.encode input).bind MeldAwareHandKey.decode).map fun decoded =>
-    (Tile.all.all (fun tile => decoded.standing tile == hand tile),
+    (Tile.all.all (fun tile =>
+        decoded.standing (.normal tile) == hand (.normal tile)),
      decoded.fixedMelds == [meld])
